@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "eyebrow": "TRAVEL · PLAN 2026",
+    "title": "曼谷+清迈",
+    "subtitle": "6天5夜",
+    "location": "海外 · 曼谷+清迈",
+    "startDate": "2026-10-05",
+    "endDate": "2026-10-10",
+    "members": [
+      "我"
+    ],
+    "remind": "",
+    "footer": "下一站 · 曼谷+清迈"
+  },
+  "days": [
+    {
+      "date": "2026-10-05",
+      "title": "第 1 天",
+      "sub": "",
+      "tags": [],
+      "stay": "Line Bangkok Hostel",
+      "items": [
+        {
+          "id": "it-mu4v817f-qrtk",
+          "type": "trip",
+          "time": "14:25",
+          "title": "澳门-曼谷廊曼",
+          "note": "",
+          "place": "澳门国际机场",
+          "food": false,
+          "done": false,
+          "lng": 113.587729,
+          "lat": 22.156065,
+          "_coordName": "澳门国际机场"
+        },
+        {
+          "id": "it-mu4v7k19-2rz0",
+          "type": "other",
+          "time": "",
+          "title": "入住",
+          "note": "",
+          "place": "Line Bangkok Hostel",
+          "food": false,
+          "done": false,
+          "lng": 100.501716,
+          "lat": 13.760341,
+          "timeOn": false,
+          "_coordName": "Line Bangkok Hostel"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "title": "第 2 天",
+      "sub": "",
+      "tags": [],
+      "stay": "",
+      "items": []
+    },
+    {
+      "date": "2026-10-07",
+      "title": "第 3 天",
+      "sub": "",
+      "tags": [],
+      "stay": "",
+      "items": []
+    },
+    {
+      "date": "2026-10-08",
+      "title": "第 4 天",
+      "sub": "",
+      "tags": [],
+      "stay": "",
+      "items": []
+    },
+    {
+      "date": "2026-10-09",
+      "title": "第 5 天",
+      "sub": "",
+      "tags": [],
+      "stay": "",
+      "items": []
+    },
+    {
+      "date": "2026-10-10",
+      "title": "第 6 天",
+      "sub": "",
+      "tags": [],
+      "stay": "",
+      "items": []
+    }
+  ],
+  "expenses": []
+}
