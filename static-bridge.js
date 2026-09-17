@@ -39,6 +39,32 @@
   function fmtTime(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
   function safeParse(s) { try { return JSON.parse(s); } catch (e) { return null; } }
 
+  // 带超时的 fetch。必须有超时：请求要是**挂住不返回**（网络被丢包/代理黑洞），
+  // 后面的 await 会永远等下去，页面就永远停在「正在读取行程…」，用户只会觉得"同步坏了"。
+  function fetchWithTimeout(url, init, ms) {
+    if (typeof AbortController !== 'function') return REAL_FETCH(url, init);
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, ms);
+    var opt = {};
+    for (var k in (init || {})) opt[k] = init[k];
+    opt.signal = ctl.signal;
+    return REAL_FETCH(url, opt).then(
+      function (r) { clearTimeout(timer); return r; },
+      function (e) {
+        clearTimeout(timer);
+        if (e && (e.name === 'AbortError' || ctl.signal.aborted)) {
+          var t = new Error('请求超时（' + Math.round(ms / 1000) + ' 秒）');
+          t.timeout = true;
+          throw t;
+        }
+        throw e;
+      }
+    );
+  }
+  function timeoutNote(e) {
+    return (e && e.timeout) ? '请求超时（网络太慢或被拦截）' : ('连不上 GitHub：' + ((e && e.message) || e));
+  }
+
   // ===== 底部状态灯（复用页脚那个「在线状态」位置）=====
   function setStatus(text, kind) {
     var t = document.getElementById('presence-text');
@@ -94,7 +120,7 @@
 
   async function loadSeed() {
     try {
-      var r = await REAL_FETCH('data.json', { cache: 'no-cache' });
+      var r = await fetchWithTimeout('data.json', { cache: 'no-cache' }, 6000);
       if (r && r.ok) return await r.json();
     } catch (e) {}
     return null;
@@ -102,7 +128,7 @@
 
   async function refreshSha() {
     try {
-      var r = await REAL_FETCH(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' });
+      var r = await fetchWithTimeout(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' }, 8000);
       if (r.status === 200) { var d = await r.json(); dataSha = d.sha || ''; return true; }
       if (r.status === 404) { dataSha = ''; return true; }
     } catch (e) {}
@@ -112,7 +138,7 @@
   async function loadState() {
     if (token() && repo()) {
       try {
-        var r = await REAL_FETCH(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' });
+        var r = await fetchWithTimeout(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' }, 8000);
         if (r.status === 200) {
           var d = await r.json();
           dataSha = d.sha || '';
@@ -122,16 +148,20 @@
           return st;
         }
         if (r.status === 404) {
-          // 仓库是空的：用本机缓存/打包数据起步，等第一次保存时创建文件
-          setStatus('云端还没有数据文件，首次保存会自动创建', 'ok');
+          // 可能是「仓库空」也可能是「仓库/令牌不对」——先探仓库，别急着说成功
+          if (await probeRepo(repo())) {
+            setStatus('云端还没有数据文件，首次保存会自动创建', 'ok');
+          } else {
+            setStatus('找不到仓库 ' + repo() + '，先用本机数据（详见 ☁️ 云端同步）', 'warn');
+            return safeParse(ls.get(K_DATA)) || await loadSeed();
+          }
           dataSha = '';
-          var cached0 = safeParse(ls.get(K_DATA));
-          return cached0 || await loadSeed();
+          return safeParse(ls.get(K_DATA)) || await loadSeed();
         }
         setStatus('读云端失败（HTTP ' + r.status + '），先用本机数据', 'warn');
         console.warn('GitHub read failed', r.status, await r.text());
       } catch (e) {
-        setStatus('连不上 GitHub，先用本机数据', 'warn');
+        setStatus(timeoutNote(e) + '，先用本机数据', 'warn');
         console.warn(e);
       }
     }
@@ -160,12 +190,12 @@
           content: b64encode(json)
         };
         if (dataSha) payload.sha = dataSha;      // 首次创建时不能带 sha
-        var r = await REAL_FETCH(contentsUrl(), {
+        var r = await fetchWithTimeout(contentsUrl(), {
           method: 'PUT',
           headers: ghHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload),
           keepalive: true                          // 关页面时也尽量把这次写完
-        });
+        }, 15000);
         if (r.status === 200 || r.status === 201) {
           var d = await r.json();
           dataSha = (d.content && d.content.sha) || dataSha;
@@ -185,7 +215,7 @@
         console.warn('GitHub write failed', r.status, await r.text());
         return;
       } catch (e) {
-        setStatus('保存失败：连不上 GitHub', 'warn');
+        setStatus('保存失败：' + timeoutNote(e), 'warn');
         console.warn(e);
         return;
       }
@@ -222,12 +252,25 @@
   };
 
   var booted = false;
+  var bootTries = 0;
   async function boot() {
     if (booted) return;
     booted = true;
     fire('connect');
     var st = await loadState();
-    if (!st) { setStatus('没有读到行程数据', 'warn'); return; }
+    if (!st) {
+      // 绝不能什么都不发就 return：那样 app.js 会永远停在「正在读取行程…」，
+      // 用户看到的是"同步坏了"，其实是这一次没读通。给两次自动重试，然后把原因写在状态灯里。
+      bootTries++;
+      if (bootTries <= 3) {
+        setStatus('没读到行程数据（第 ' + bootTries + ' 次），2.5 秒后自动重试…', 'warn');
+        setTimeout(function () { booted = false; boot(); }, 2500);
+      } else {
+        setStatus('读不到行程数据：云端没读通、本机也没缓存 → 点 ☁️ 云端同步 看原因', 'warn');
+      }
+      return;
+    }
+    bootTries = 0;
     fire('state', st);
     // 没配令牌 = 这台设备读不到私有仓库里的最新行程（配置只存本机，换设备要重填）
     if (!token() || !repo()) {
@@ -407,7 +450,7 @@
 
       elState.textContent = '正在测试连接…';
       try {
-        var r = await REAL_FETCH(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' });
+        var r = await fetchWithTimeout(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' }, 10000);
         if (r.status === 200) {
           var d = await r.json();
           dataSha = d.sha || '';
@@ -440,7 +483,8 @@
           elState.textContent = '连接失败 HTTP ' + r.status;
         }
       } catch (e) {
-        elState.textContent = '连不上 GitHub：' + ((e && e.message) || e);
+        elState.textContent = timeoutNote(e) + '。若反复超时：确认这台电脑能打开 github.com，'
+          + '并临时关掉代理/VPN 再试一次。';
       }
     });
   }
