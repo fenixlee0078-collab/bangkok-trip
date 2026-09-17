@@ -91,6 +91,9 @@
   var dataSha = '';            // 当前云端文件版本，PUT 时必须带对，否则 409
   var pendingSave = null;
   var lastJSON = '';
+  // 这次有没有读通云端。没读通就保存＝拿本机那份覆盖云端，可能丢掉别的设备上的改动，
+  // 所以这种情况保存前必须让用户确认一次。
+  var cloudReadFailed = false;
 
   function ghHeaders(extra) {
     var h = {
@@ -144,23 +147,28 @@
           dataSha = d.sha || '';
           var st = JSON.parse(b64decode(d.content));
           ls.set(K_DATA, JSON.stringify(st));
+          cloudReadFailed = false;
           setStatus('已连接云端 · ' + fmtTime(new Date()), 'ok');
           return st;
         }
         if (r.status === 404) {
           // 可能是「仓库空」也可能是「仓库/令牌不对」——先探仓库，别急着说成功
           if (await probeRepo(repo())) {
+            cloudReadFailed = false;
             setStatus('云端还没有数据文件，首次保存会自动创建', 'ok');
           } else {
+            cloudReadFailed = true;
             setStatus('找不到仓库 ' + repo() + '，先用本机数据（详见 ☁️ 云端同步）', 'warn');
             return safeParse(ls.get(K_DATA)) || await loadSeed();
           }
           dataSha = '';
           return safeParse(ls.get(K_DATA)) || await loadSeed();
         }
+        cloudReadFailed = true;
         setStatus('读云端失败（HTTP ' + r.status + '），先用本机数据', 'warn');
         console.warn('GitHub read failed', r.status, await r.text());
       } catch (e) {
+        cloudReadFailed = true;
         setStatus(timeoutNote(e) + '，先用本机数据', 'warn');
         console.warn(e);
       }
@@ -183,6 +191,12 @@
       return;
     }
     setStatus('保存中…', 'warn');
+    // 没读通云端却要保存 = 可能覆盖其他设备上的改动 → 先确认
+    if (cloudReadFailed && typeof window.confirm === 'function') {
+      var go = window.confirm('这台设备这次没能读到云端行程（网络问题或令牌失效）。\n'
+        + '继续保存会用本机这份覆盖云端，可能丢掉手机等其他设备上的改动。\n\n确定要保存吗？');
+      if (!go) { setStatus('已取消保存（本机改动仍在，等读通云端再存）', 'warn'); return; }
+    }
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
         var payload = {
