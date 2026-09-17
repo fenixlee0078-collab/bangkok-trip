@@ -236,7 +236,8 @@
 
   function scheduleSave(st) {
     lastJSON = JSON.stringify(st);
-    ls.set(K_DATA, lastJSON);        // 先落本机：没网/没令牌也不丢改动
+    // 本机缓存同样只存合法行程：坏数据缓存下来，之后每次打开都会白屏（readCache 会拒绝它）
+    if (!stateShapeError(st)) ls.set(K_DATA, lastJSON);
     if (pendingSave) clearTimeout(pendingSave);
     pendingSave = setTimeout(function () { pendingSave = null; pushToCloud(lastJSON); }, 900);
   }
@@ -244,6 +245,15 @@
   async function pushToCloud(json) {
     if (!token() || !repo()) {
       setStatus('改动只存在本机（点页脚 ☁️ 云端同步 开启）', 'warn');
+      return;
+    }
+    // 写之前先自检内容。教训（2026-09-17 真实故障）：私有仓库里的 data.json 一旦被写成
+    // 空壳（内容就是 `{}`），之后**每台设备**打开都读不出行程 —— 读取侧会拒绝它、回落到
+    // 本机旧数据，用户看到的就是"同步不了"。宁可这次保存失败，也不能把非法内容写进云端。
+    var bad = stateShapeError(safeParse(json));
+    if (bad) {
+      setStatus('已阻止保存：本机数据不是完整行程（' + bad + '），没有写入云端', 'warn');
+      console.warn('refuse to push invalid state:', bad, String(json).slice(0, 200));
       return;
     }
     setStatus('保存中…', 'warn');
@@ -269,7 +279,13 @@
         if (r.status === 200 || r.status === 201) {
           var d = await r.json();
           dataSha = (d.content && d.content.sha) || dataSha;
-          setStatus('已保存到云端 · ' + fmtTime(new Date()), 'ok');
+          // 写成功之后云端就是这份数据了：把"没读通"的状态清掉，
+          // 免得之后每存一次都再弹一次覆盖确认。
+          var healed = permanentFail;
+          cloudReadFailed = false;
+          permanentFail = false;
+          loadNote = '';
+          setStatus('已保存到云端 · ' + fmtTime(new Date()) + (healed ? '（已覆盖云端那份异常数据）' : ''), 'ok');
           return;
         }
         if (r.status === 409 || r.status === 422) {
@@ -543,12 +559,13 @@
           if (p.error) {
             // 连上了，但那份文件不是行程数据：不能报"连接成功"，否则用户会以为配好了
             cloudReadFailed = true;
+            permanentFail = true;
             loadNote = '云端 ' + dataPath() + ' 不是行程数据（' + p.error + '）';
             dataSha = d.sha || '';
             elState.textContent = '连上了，但云端 ' + dataPath() + ' 不是行程数据（' + p.error + '）。'
               + '原文开头：' + p.raw.slice(0, 80).replace(/\s+/g, ' ') + ' …'
-              + ' 处理办法：在仓库里删掉这份文件，或直接在页面里改一条安排并保存，'
-              + '会用本机数据把它覆盖掉（会先弹确认）。';
+              + ' 修法：在【本机行程最完整的那台设备】上改一条安排并保存，会先弹确认框，'
+              + '点确定就用本机数据覆盖云端那份。也可以在仓库里直接删掉这份文件，下次保存会自动重建。';
             setStatus('云端数据异常（' + p.error + '），已保持本机数据', 'warn');
             return;
           }
