@@ -20,7 +20,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 
 /* ---------- 操作提示 ---------- */
 #tip{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(6px);
-  background:var(--forest);color:#EAF1EB;font-size:12.5px;padding:7px 16px;border-radius:999px;
+  background:var(--forest);color:var(--on-forest,#EAF1EB);font-size:12.5px;padding:7px 16px;border-radius:999px;
   opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:100;white-space:nowrap;max-width:90vw}
 #tip.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
@@ -55,7 +55,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 .chip{
   font-size:12.5px;padding:6px 13px;border-radius:999px;
   background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.2);
-  color:#EDF3EE;backdrop-filter:blur(6px);white-space:nowrap;
+  color:var(--t-a,#EDF3EE);backdrop-filter:blur(6px);white-space:nowrap;
 }
 .chip b{font-weight:600}
 .chip.edit{
@@ -282,7 +282,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 /* ---------- 内嵌计算器 ---------- */
 .calc-panel{
   display:none;margin-top:10px;border:1px solid var(--line);border-radius:14px;
-  background:#FBFCFA;padding:10px 10px 12px;animation:calcIn .2s ease;
+  background:var(--t-a,#FBFCFA);padding:10px 10px 12px;animation:calcIn .2s ease;
 }
 .calc-panel.show{display:block}
 @keyframes calcIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
@@ -311,9 +311,9 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   cursor:pointer;font-family:inherit;transition:background .12s,transform .08s;
   -webkit-tap-highlight-color:transparent;
 }
-.ck:active{transform:scale(.96);background:#F1F4F1}
-.ck.op{color:var(--forest2);background:#F2F7F3}
-.ck.fn{color:var(--ink2);background:#F7F7F5;font-size:15px}
+.ck:active{transform:scale(.96);background:var(--t-a,#F1F4F1)}
+.ck.op{color:var(--forest2);background:var(--t-a,#F2F7F3)}
+.ck.fn{color:var(--ink2);background:var(--t-a,#F7F7F5);font-size:15px}
 .ck.eq{background:var(--forest);color:#fff;border-color:var(--forest)}
 .ck.eq:active{background:var(--forest2)}
 .calc-done{
@@ -341,7 +341,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 }
 .place-field:hover{border-color:var(--forest2);background:var(--fog)}
 .place-field:active{transform:scale(.995)}
-.place-field.has-place{background:#F2F7F4;border-color:var(--forest2)}
+.place-field.has-place{background:var(--t-a,#F2F7F4);border-color:var(--forest2)}
 .place-field .pf-ico{flex:none;font-size:14px;line-height:1}
 .place-field .pf-text{
   flex:1;min-width:0;font-size:14px;
@@ -381,7 +381,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 .pp-back:active{opacity:.6}
 .pp-search{
   flex:1;min-width:0;display:flex;align-items:center;gap:8px;
-  background:#F3F5F4;border-radius:11px;padding:0 11px;height:40px;
+  background:var(--t-a,#F3F5F4);border-radius:11px;padding:0 11px;height:40px;
 }
 .pp-search .pp-ico{flex:none;font-size:13px;opacity:.7}
 .pp-search input{
@@ -420,7 +420,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   -webkit-tap-highlight-color:transparent;
 }
 .pp-item:last-child{border-bottom:none}
-.pp-item:hover,.pp-item.selected{background:#EFF5F1}
+.pp-item:hover,.pp-item.selected{background:var(--t-a,#EFF5F1)}
 .pp-item.selected .pp-item-go{color:#fff;background:var(--forest2)}
 .pp-item-ico{
   flex:none;width:26px;height:26px;border-radius:50%;
@@ -455,7 +455,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 /* 收起按钮现在放在 .day-bar 里（普通流布局），不再绝对定位 */
 .fold-btn{
   width:30px;height:30px;border-radius:50%;
-  background:var(--fog);border:1px solid #DCE5DC;color:var(--forest2);
+  background:var(--fog);border:1px solid var(--t-line,#DCE5DC);color:var(--forest2);
   display:flex;align-items:center;justify-content:center;transition:transform .2s;flex:none;
 }
 .fold-btn svg{display:block}
@@ -503,7 +503,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   border:1.5px solid var(--line);border-radius:14px;background:#fff;
   transition:.18s;text-align:left;
 }
-.nav-opt:hover{border-color:var(--forest2);background:#F7FAF8}
+.nav-opt:hover{border-color:var(--forest2);background:var(--t-a,#F7FAF8)}
 .nav-ico{font-size:26px;flex:none}
 .nav-txt{display:flex;flex-direction:column}
 .nav-txt b{font-size:15px;color:var(--ink);font-weight:700}
@@ -511,7 +511,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 
 /* ---------- 点评引导 ---------- */
 .guide-steps{display:flex;flex-direction:column;gap:10px;margin:12px 0 14px}
-.guide-step{display:flex;gap:8px;font-size:13.5px;color:var(--ink);background:#F7FAF8;border:1px solid #E3ECE6;border-radius:10px;padding:10px 12px;line-height:1.6}
+.guide-step{display:flex;gap:8px;font-size:13.5px;color:var(--ink);background:var(--t-a,#F7FAF8);border:1px solid var(--t-line,#E3ECE6);border-radius:10px;padding:10px 12px;line-height:1.6}
 .guide-step b{flex:none;color:var(--forest2);font-weight:700}
 
 /* ---------- 费用分摊 ---------- */
@@ -551,7 +551,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   display:flex;align-items:center;gap:12px;background:var(--card);
   border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;transition:.15s;
 }
-.exp-item:hover{border-color:#C9D6CB}
+.exp-item:hover{border-color:var(--t-line,#C9D6CB)}
 .exp-cat{flex:none;font-size:11px;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap}
 .exp-main{flex:1;min-width:0}
 .exp-main .t{font-size:14.5px;font-weight:600;word-break:break-word}
@@ -571,7 +571,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   display:flex;align-items:center;gap:6px;padding:6px 13px;border-radius:999px;
   border:1.5px solid var(--line);font-size:13px;cursor:pointer;transition:.15s;color:var(--ink2);
 }
-.part-check label.on{border-color:var(--forest2);background:#EAF3EE;color:var(--forest2);font-weight:600}
+.part-check label.on{border-color:var(--forest2);background:var(--t-a,#EAF3EE);color:var(--forest2);font-weight:600}
 .part-check input{display:none}
 
 /* ---------- 响应式 ---------- */
