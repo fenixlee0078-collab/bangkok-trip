@@ -214,7 +214,15 @@
     var st = await loadState();
     if (!st) { setStatus('没有读到行程数据', 'warn'); return; }
     fire('state', st);
-    if (!token() || !repo()) setStatus('本机存储中（点 ☁️ 云端同步 可跨设备）', 'warn');
+    // 没配令牌 = 这台设备读不到私有仓库里的最新行程（配置只存本机，换设备要重填）
+    if (!token() || !repo()) {
+      setStatus(
+        token()
+          ? '本机存储中（点 ☁️ 云端同步 可跨设备）'
+          : '这台设备还没填令牌，看到的是本机数据 → 点 ☁️ 云端同步 填一次',
+        'warn'
+      );
+    }
   }
   window.io = function () { setTimeout(boot, 0); return socketApi; };
 
