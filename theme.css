@@ -1,0 +1,33 @@
+/* 主题：tropic（由 create_trip.py 自动生成） */
+:root{
+  --ink:#1A2A24;
+  --ink2:#46564F;
+  --ink3:#83948C;
+  --paper:#F1F6F1;
+  --card:#FFFFFF;
+  --line:#DCE7DC;
+  --forest:#16402E;
+  --forest2:#236B4A;
+  --moss:#4E9A72;
+  --clay:#B45A3A;
+  --sun:#D9A24A;
+  --fog:#EAF2EA;
+  --shadow:0 2px 4px rgba(20,30,24,.04), 0 12px 28px rgba(20,30,24,.08);
+
+  --hero-grad:linear-gradient(160deg,#0D241A 0%,#16402E 45%,#236B4A 100%);
+  --hero-text:#EFF6F0;
+  --hero-sub:#A9D2B8;
+  --glow-rgb:217,162,74;
+  --fog-rgb:13,36,26;
+
+  --next-grad:linear-gradient(135deg,#102E20 0%,#1A5038 52%,#236B4A 100%);
+  --next-sub:#A9D2B8;
+  --next-label:#82B092;
+  --next-num:#C3E4CC;
+
+  --hill-sun:#D9A24A;
+  --hill1:#236B4A;
+  --hill2:#1A5038;
+  --hill3:#102E20;
+  --hill4:#0C2016;
+}
