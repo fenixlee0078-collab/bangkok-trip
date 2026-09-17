@@ -180,6 +180,32 @@
     return false;
   }
 
+  // 云端那份是「空壳」时的一键修复。为什么必须有：**只刷新不写入，云端那份坏文件永远还在**，
+  // 用户会觉得"我刷新了怎么还是这样"。空壳（解析出来是个没有任何字段的对象 `{}`）本身
+  // 没有任何行程内容可丢，所以用本机这份覆盖是安全的。做法：页面渲染完 400ms 后问一句。
+  function offerHeal(localSt, sha) {
+    if (!localSt || stateShapeError(localSt)) return;      // 本机也没有可用数据 → 别问，问了也没得覆盖
+    var askKey = 'trip_heal_declined_' + (sha || 'nosha'); // 按云端版本号记：同一版拒绝过就不再烦人
+    if (ls.get(askKey)) return;
+    setTimeout(function () {
+      // 把本机这份的规模写进弹窗：用户能据此判断"这是不是我编的那版"（还是旧快照）
+      var days = (localSt.days || []).length;
+      var items = (localSt.days || []).reduce(function (n, d) { return n + ((d.items || []).length); }, 0);
+      var go = (typeof window.confirm === 'function')
+        ? window.confirm('云端那份 data.json 是个空壳（里面没有任何行程内容）。\n\n'
+          + '本机这份有 ' + days + ' 天 · ' + items + ' 项安排。要用它覆盖云端、恢复正常同步吗？')
+        : false;
+      if (!go) {
+        ls.set(askKey, '1');
+        setStatus('已跳过覆盖云端（本机改动仍在）→ 想修的时候点页脚 ☁️ 云端同步', 'warn');
+        return;
+      }
+      ls.set(K_DATA, JSON.stringify(localSt));
+      lastJSON = JSON.stringify(localSt);
+      pushToCloud(lastJSON, true);                         // 已经问过了，别再弹一次确认
+    }, 400);
+  }
+
   async function loadState() {
     loadNote = '';
     permanentFail = false;
@@ -197,7 +223,12 @@
             loadNote = '云端 ' + dataPath() + ' 不是行程数据（' + p.error + '）';
             setStatus(loadNote + '，已先用本机数据', 'warn');
             console.warn('bad cloud payload:', p.error, p.raw.slice(0, 300));
-            return readCache() || await loadSeed();
+            var fallback = readCache() || await loadSeed();
+            // 空壳（`{}`：解析成功但一个顶层字段都没有）→ 没有任何内容可丢，问一句就修掉它
+            var empty = !!p.state && typeof p.state === 'object' && !Array.isArray(p.state)
+              && Object.keys(p.state).length === 0;
+            if (empty) offerHeal(fallback, d.sha);
+            return fallback;
           }
           ls.set(K_DATA, JSON.stringify(p.state));
           cloudReadFailed = false;
@@ -242,7 +273,7 @@
     pendingSave = setTimeout(function () { pendingSave = null; pushToCloud(lastJSON); }, 900);
   }
 
-  async function pushToCloud(json) {
+  async function pushToCloud(json, alreadyConfirmed) {
     if (!token() || !repo()) {
       setStatus('改动只存在本机（点页脚 ☁️ 云端同步 开启）', 'warn');
       return;
@@ -258,7 +289,7 @@
     }
     setStatus('保存中…', 'warn');
     // 没读通云端却要保存 = 可能覆盖其他设备上的改动 → 先确认
-    if (cloudReadFailed && typeof window.confirm === 'function') {
+    if (cloudReadFailed && !alreadyConfirmed && typeof window.confirm === 'function') {
       var go = window.confirm('这台设备这次没能读到云端行程（网络问题、令牌失效，或云端那份 data.json 不是行程数据）。\n'
         + '继续保存会用本机这份覆盖云端，可能丢掉手机等其他设备上的改动。\n\n确定要保存吗？');
       if (!go) { setStatus('已取消保存（本机改动仍在，等读通云端再存）', 'warn'); return; }
