@@ -473,7 +473,11 @@
   function tripConfigPayload() {
     var c = CFG.searchCenter || {};
     return {
-      mapProvider: CFG.mapProvider === 'amap' ? 'amap' : 'google',
+      // 显式声明优先；没声明时按「有没有配谷歌 Key」推断，而不是一律当成 google——
+      // 国内行程的静态版忘了写 mapProvider 会导致点导航打开打不开的谷歌链接（app.js 默认是 amap）
+      mapProvider: (CFG.mapProvider === 'amap' || CFG.mapProvider === 'google')
+        ? CFG.mapProvider
+        : (gkey() ? 'google' : 'amap'),
       cityName: CFG.cityName || '',
       searchCenter: [Number(c.lng) || 0, Number(c.lat) || 0],
       amapKeyConfigured: false,
