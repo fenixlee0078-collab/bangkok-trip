@@ -79,6 +79,19 @@
     return 'https://api.github.com/repos/' + repo() + '/contents/' + dataPath();
   }
 
+  // 探测仓库本身是否真的存在、且这个令牌看得见它。
+  // 必须单独探一次，因为 contents 接口的 404 分不清「仓库不存在」和「仓库在但没这个文件」——
+  // 不探就会把「仓库名写错 / 令牌没勾这个仓库」误报成「连接成功，首次保存会自动创建」。
+  async function probeRepo(rp) {
+    if (!rp) return false;
+    try {
+      var r = await REAL_FETCH('https://api.github.com/repos/' + rp + '?t=' + Date.now(), {
+        headers: ghHeaders(), cache: 'no-store'
+      });
+      return r.status === 200;
+    } catch (e) { return false; }
+  }
+
   async function loadSeed() {
     try {
       var r = await REAL_FETCH('data.json', { cache: 'no-cache' });
@@ -163,9 +176,11 @@
           // 版本对不上（云端被别人改过）：取回最新 sha 再写一次，最后一次写入胜出
           if (await refreshSha()) continue;
         }
-        var msg = r.status === 401 || r.status === 403
+        var msg = (r.status === 401 || r.status === 403)
           ? '令牌无效或权限不足（需要该仓库 Contents: Read and write）'
-          : 'HTTP ' + r.status;
+          : (r.status === 404
+            ? '仓库不存在或令牌看不到它（检查仓库名与令牌的授权范围）'
+            : 'HTTP ' + r.status);
         setStatus('保存失败：' + msg, 'warn');
         console.warn('GitHub write failed', r.status, await r.text());
         return;
@@ -405,6 +420,13 @@
           return;
         }
         if (r.status === 404) {
+          var repoOk = await probeRepo(rp);
+          if (!repoOk) {
+            elState.textContent = '找不到仓库 ' + rp + '：确认仓库已经建好、名字没拼错，'
+              + '并且令牌的 Repository access 勾选了它（私有仓库只有勾选才可见）。';
+            setStatus('云端未连接：仓库不存在或令牌无权访问', 'warn');
+            return;
+          }
           dataSha = '';
           elState.textContent = '连接成功。云端还没有数据文件，下次保存会自动创建。';
           setStatus('云端已连接（首次保存会创建数据文件）', 'ok');
