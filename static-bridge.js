@@ -39,6 +39,29 @@
   function fmtTime(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
   function safeParse(s) { try { return JSON.parse(s); } catch (e) { return null; } }
 
+  // 读到的东西必须是「完整行程状态」：meta 是对象、days 是数组、每天有 items 数组。
+  // 不校验的后果（2026-09-17 真实故障）：云端 data.json 里如果不是行程数据（比如是个
+  // 错误对象），它会一路传到 app.js，在 renderHero() 第一行 state.meta.eyebrow 抛错，
+  // 整个 render() 断在那里 —— 页面静默停在「正在读取行程…」，而状态灯还写着「已连接云端」，
+  // 用户只能看到"同步不了"，AI 也只能靠猜。校验过就能当场说清原因并保住本机数据。
+  function stateShapeError(st) {
+    if (!st || typeof st !== 'object' || Array.isArray(st)) return '不是对象';
+    var keys = Object.keys(st).slice(0, 6).join('、') || '空对象';
+    if (!st.meta || typeof st.meta !== 'object' || Array.isArray(st.meta)) return '缺少 meta · 顶层键：' + keys;
+    if (!Array.isArray(st.days)) return '缺少 days · 顶层键：' + keys;
+    for (var i = 0; i < st.days.length; i++) {
+      var d = st.days[i];
+      if (!d || typeof d !== 'object' || !Array.isArray(d.items)) return '第 ' + (i + 1) + ' 天缺少 items';
+    }
+    return '';
+  }
+
+  // 本机缓存同样要校验：坏数据一旦被缓存下来，之后每次打开都会白屏
+  function readCache() {
+    var c = safeParse(ls.get(K_DATA));
+    return (c && !stateShapeError(c)) ? c : null;
+  }
+
   // 带超时的 fetch。必须有超时：请求要是**挂住不返回**（网络被丢包/代理黑洞），
   // 后面的 await 会永远等下去，页面就永远停在「正在读取行程…」，用户只会觉得"同步坏了"。
   function fetchWithTimeout(url, init, ms) {
@@ -73,6 +96,12 @@
     if (d) d.classList.toggle('online', kind === 'ok');
   }
 
+  // app.js 要是没加载出来（404 / 被拦），页面上什么都不会发生，得说一声
+  window.addEventListener('error', function (e) {
+    var t = e && e.target;
+    if (t && t.tagName === 'SCRIPT') setStatus('脚本没加载出来：' + (t.src || '').split('/').pop() + '（强刷试试）', 'warn');
+  }, true);
+
   // ===== base64（UTF-8 安全：中文必须走 TextEncoder，否则 btoa 直接抛错）=====
   function b64encode(str) {
     var bytes = new TextEncoder().encode(str);
@@ -86,6 +115,14 @@
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new TextDecoder().decode(bytes);
   }
+  // 把云端返回的内容解析成行程状态；解析不出来时返回原因（用于告诉用户到底怎么回事）
+  function parseStatePayload(content) {
+    var raw = b64decode(content || '');
+    var st = null, why = '';
+    try { st = JSON.parse(raw); } catch (e) { why = '不是合法 JSON'; }
+    if (!why) why = stateShapeError(st);
+    return { raw: raw, state: st, error: why };
+  }
 
   // ===== GitHub 数据层 =====
   var dataSha = '';            // 当前云端文件版本，PUT 时必须带对，否则 409
@@ -94,6 +131,8 @@
   // 这次有没有读通云端。没读通就保存＝拿本机那份覆盖云端，可能丢掉别的设备上的改动，
   // 所以这种情况保存前必须让用户确认一次。
   var cloudReadFailed = false;
+  var loadNote = '';           // 上一次读取失败的具体原因（留给状态灯，别被"重试中"盖掉）
+  var permanentFail = false;   // 不是"网慢了"，而是"那份文件根本不是行程数据"→ 重试没意义
 
   function ghHeaders(extra) {
     var h = {
@@ -124,7 +163,10 @@
   async function loadSeed() {
     try {
       var r = await fetchWithTimeout('data.json', { cache: 'no-cache' }, 6000);
-      if (r && r.ok) return await r.json();
+      if (r && r.ok) {
+        var d = await r.json();
+        if (!stateShapeError(d)) return d;
+      }
     } catch (e) {}
     return null;
   }
@@ -139,17 +181,28 @@
   }
 
   async function loadState() {
+    loadNote = '';
+    permanentFail = false;
     if (token() && repo()) {
       try {
         var r = await fetchWithTimeout(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' }, 8000);
         if (r.status === 200) {
           var d = await r.json();
+          // sha 先记下来：即使内容不能用，也留着这个版本号，之后保存才能覆盖它
           dataSha = d.sha || '';
-          var st = JSON.parse(b64decode(d.content));
-          ls.set(K_DATA, JSON.stringify(st));
+          var p = parseStatePayload(d.content);
+          if (p.error) {
+            cloudReadFailed = true;
+            permanentFail = true;                        // 重试也还是那份文件，别空转
+            loadNote = '云端 ' + dataPath() + ' 不是行程数据（' + p.error + '）';
+            setStatus(loadNote + '，已先用本机数据', 'warn');
+            console.warn('bad cloud payload:', p.error, p.raw.slice(0, 300));
+            return readCache() || await loadSeed();
+          }
+          ls.set(K_DATA, JSON.stringify(p.state));
           cloudReadFailed = false;
           setStatus('已连接云端 · ' + fmtTime(new Date()), 'ok');
-          return st;
+          return p.state;
         }
         if (r.status === 404) {
           // 可能是「仓库空」也可能是「仓库/令牌不对」——先探仓库，别急着说成功
@@ -158,22 +211,25 @@
             setStatus('云端还没有数据文件，首次保存会自动创建', 'ok');
           } else {
             cloudReadFailed = true;
-            setStatus('找不到仓库 ' + repo() + '，先用本机数据（详见 ☁️ 云端同步）', 'warn');
-            return safeParse(ls.get(K_DATA)) || await loadSeed();
+            loadNote = '找不到仓库 ' + repo();
+            setStatus(loadNote + '，先用本机数据（详见 ☁️ 云端同步）', 'warn');
+            return readCache() || await loadSeed();
           }
           dataSha = '';
-          return safeParse(ls.get(K_DATA)) || await loadSeed();
+          return readCache() || await loadSeed();
         }
         cloudReadFailed = true;
-        setStatus('读云端失败（HTTP ' + r.status + '），先用本机数据', 'warn');
+        loadNote = '读云端失败（HTTP ' + r.status + '）';
+        setStatus(loadNote + '，先用本机数据', 'warn');
         console.warn('GitHub read failed', r.status, await r.text());
       } catch (e) {
         cloudReadFailed = true;
-        setStatus(timeoutNote(e) + '，先用本机数据', 'warn');
+        loadNote = timeoutNote(e);
+        setStatus(loadNote + '，先用本机数据', 'warn');
         console.warn(e);
       }
     }
-    var cached = safeParse(ls.get(K_DATA));
+    var cached = readCache();
     if (cached) return cached;
     return await loadSeed();
   }
@@ -193,7 +249,7 @@
     setStatus('保存中…', 'warn');
     // 没读通云端却要保存 = 可能覆盖其他设备上的改动 → 先确认
     if (cloudReadFailed && typeof window.confirm === 'function') {
-      var go = window.confirm('这台设备这次没能读到云端行程（网络问题或令牌失效）。\n'
+      var go = window.confirm('这台设备这次没能读到云端行程（网络问题、令牌失效，或云端那份 data.json 不是行程数据）。\n'
         + '继续保存会用本机这份覆盖云端，可能丢掉手机等其他设备上的改动。\n\n确定要保存吗？');
       if (!go) { setStatus('已取消保存（本机改动仍在，等读通云端再存）', 'warn'); return; }
     }
@@ -247,7 +303,12 @@
   var handlers = {};
   function fire(ev, arg) {
     (handlers[ev] || []).slice().forEach(function (f) {
-      try { f(arg); } catch (e) { console.error(e); }
+      try { f(arg); } catch (e) {
+        console.error(e);
+        // 以前这里只写 console：app.js 渲染时抛错的话，页面会静默停在
+        // 「正在读取行程…」，页面上一点线索都没有。现在把它顶到状态灯上。
+        setStatus('页面渲染出错：' + ((e && e.message) || e) + '（详见浏览器控制台）', 'warn');
+      }
     });
   }
   var socketApi = {
@@ -273,15 +334,26 @@
     fire('connect');
     var st = await loadState();
     if (!st) {
-      // 绝不能什么都不发就 return：那样 app.js 会永远停在「正在读取行程…」，
-      // 用户看到的是"同步坏了"，其实是这一次没读通。给两次自动重试，然后把原因写在状态灯里。
+      // 「那份文件根本不是行程数据」这类问题重试也没用，直接把原因留在状态灯上别空转
+      if (permanentFail && loadNote) {
+        setStatus(loadNote + '，本机也没有可用数据 → 点 ☁️ 云端同步 看详情', 'warn');
+        return;
+      }
+      // 其余（超时/被拦/读不到）给三次自动重试，仍不行就把原因写在状态灯里。
+      // 绝不能什么都不发就 return：那样 app.js 会永远停在「正在读取行程…」。
       bootTries++;
       if (bootTries <= 3) {
-        setStatus('没读到行程数据（第 ' + bootTries + ' 次），2.5 秒后自动重试…', 'warn');
+        setStatus((loadNote ? loadNote + '；' : '') + '没读到行程数据（第 ' + bootTries + ' 次），2.5 秒后自动重试…', 'warn');
         setTimeout(function () { booted = false; boot(); }, 2500);
       } else {
-        setStatus('读不到行程数据：云端没读通、本机也没缓存 → 点 ☁️ 云端同步 看原因', 'warn');
+        setStatus((loadNote ? loadNote + '；' : '') + '读不到行程数据 → 点 ☁️ 云端同步 看原因', 'warn');
       }
+      return;
+    }
+    // app.js 没跑起来（被拦、报错中断）时，state 发出去也没人接 —— 得说出来，
+    // 否则用户只会看到空页面，不知道该刷新。
+    if (!(handlers['state'] && handlers['state'].length)) {
+      setStatus('页面脚本没就绪（按 Ctrl+Shift+R 强制刷新一次）', 'warn');
       return;
     }
     bootTries = 0;
@@ -467,12 +539,24 @@
         var r = await fetchWithTimeout(contentsUrl() + '?t=' + Date.now(), { headers: ghHeaders(), cache: 'no-store' }, 10000);
         if (r.status === 200) {
           var d = await r.json();
+          var p = parseStatePayload(d.content);
+          if (p.error) {
+            // 连上了，但那份文件不是行程数据：不能报"连接成功"，否则用户会以为配好了
+            cloudReadFailed = true;
+            loadNote = '云端 ' + dataPath() + ' 不是行程数据（' + p.error + '）';
+            dataSha = d.sha || '';
+            elState.textContent = '连上了，但云端 ' + dataPath() + ' 不是行程数据（' + p.error + '）。'
+              + '原文开头：' + p.raw.slice(0, 80).replace(/\s+/g, ' ') + ' …'
+              + ' 处理办法：在仓库里删掉这份文件，或直接在页面里改一条安排并保存，'
+              + '会用本机数据把它覆盖掉（会先弹确认）。';
+            setStatus('云端数据异常（' + p.error + '），已保持本机数据', 'warn');
+            return;
+          }
           dataSha = d.sha || '';
-          var st = JSON.parse(b64decode(d.content));
-          ls.set(K_DATA, JSON.stringify(st));
+          ls.set(K_DATA, JSON.stringify(p.state));
           elState.textContent = '连接成功，已读到云端数据。';
           setStatus('已连接云端 · ' + fmtTime(new Date()), 'ok');
-          fire('state', st);
+          fire('state', p.state);
           close();
           return;
         }
