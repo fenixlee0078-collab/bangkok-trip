@@ -1,33 +1,62 @@
-/* 主题：tropic（由 create_trip.py 自动生成） */
+/* 主题：siam（由 create_trip.py 自动生成） */
 :root{
-  --ink:#1A2A24;
-  --ink2:#46564F;
-  --ink3:#83948C;
-  --paper:#F1F6F1;
+  --ink:#26190F;
+  --ink2:#57432F;
+  --ink3:#9C8468;
+  --paper:#FBF6EB;
   --card:#FFFFFF;
-  --line:#DCE7DC;
-  --forest:#16402E;
-  --forest2:#236B4A;
-  --moss:#4E9A72;
-  --clay:#B45A3A;
-  --sun:#D9A24A;
-  --fog:#EAF2EA;
-  --shadow:0 2px 4px rgba(20,30,24,.04), 0 12px 28px rgba(20,30,24,.08);
+  --line:#EBDCC2;
+  --forest:#0E4A3B;
+  --forest2:#1B7A5B;
+  --moss:#55AC8B;
+  --clay:#C05A26;
+  --sun:#DFA63A;
+  --fog:#F4EEDF;
+  --shadow:0 2px 4px rgba(38,25,15,.05), 0 12px 28px rgba(38,25,15,.10);
 
-  --hero-grad:linear-gradient(160deg,#0D241A 0%,#16402E 45%,#236B4A 100%);
-  --hero-text:#EFF6F0;
-  --hero-sub:#A9D2B8;
-  --glow-rgb:217,162,74;
-  --fog-rgb:13,36,26;
+  --hero-grad:linear-gradient(160deg,#06251E 0%,#0E4A3B 48%,#1C7A5B 100%);
+  --hero-text:#FBF6E9;
+  --hero-sub:#A9D9C0;
+  --glow-rgb:223,166,58;
+  --fog-rgb:8,37,30;
 
-  --next-grad:linear-gradient(135deg,#102E20 0%,#1A5038 52%,#236B4A 100%);
-  --next-sub:#A9D2B8;
-  --next-label:#82B092;
-  --next-num:#C3E4CC;
+  --next-grad:linear-gradient(135deg,#082E25 0%,#115741 52%,#1B7A5B 100%);
+  --next-sub:#A9D9C0;
+  --next-label:#7FB59C;
+  --next-num:#C9E9D8;
 
-  --hill-sun:#D9A24A;
-  --hill1:#236B4A;
-  --hill2:#1A5038;
-  --hill3:#102E20;
-  --hill4:#0C2016;
+  --hill-sun:#E9B44C;
+  --hill1:#1B7A5B;
+  --hill2:#115741;
+  --hill3:#082E25;
+  --hill4:#051D18;
+  --t-a:#F7F2E6;
+  --t-line:#E8DDC7;
+  --on-forest:#FBF6E9;
 }
+
+/* —— 泰式点缀：金 + 翡翠 —— */
+/* ⚠ theme.css 在 style.css 之前加载，所以一律用 :root 前缀抬高特异性，否则盖不住 */
+:root .day-num{
+  background:linear-gradient(145deg,#F2C868 0%,#DFA63A 48%,#BE8425 100%);
+  color:#3D2A0C;
+  box-shadow:0 0 0 4px var(--paper),0 6px 16px rgba(160,110,30,.30);
+}
+:root .hero-media .glow{
+  width:290px;height:290px;right:-54px;top:-74px;
+  background:radial-gradient(circle,rgba(var(--glow-rgb),.55),rgba(var(--glow-rgb),0) 68%);
+}
+:root .next-card{
+  box-shadow:0 3px 6px rgba(38,25,15,.10),0 16px 34px rgba(38,25,15,.22),
+             inset 0 0 0 1px rgba(223,166,58,.30);
+}
+.hero::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--sun) 18%,var(--sun) 82%,transparent);
+  opacity:.75;pointer-events:none;
+}
+:root .exp-cat-交通{background:#E4EEF6;color:#1E5B7A}
+:root .exp-cat-住宿{background:#FBF0D6;color:#96660F}
+:root .exp-cat-餐饮{background:#FBE3D3;color:#B4551F}
+:root .exp-cat-门票{background:#DFF0E8;color:#0F6A4C}
+:root .exp-cat-其他{background:#EFE8DC;color:#6B5B48}
