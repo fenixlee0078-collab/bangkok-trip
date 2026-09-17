@@ -24,11 +24,56 @@
   var K_GKEY  = 'trip_google_key';   // 浏览器专用谷歌 Key（可覆盖 site-config.js）
   var K_DATA  = 'trip_data_cache';   // 行程数据本机副本
 
+  // ===== 站点命名空间（多行程互不串数据的前提）=====
+  // 同一个 GitHub 账号下的所有 Pages 站点是**同源**的（都是 <用户名>.github.io/<仓库>/），
+  // 而浏览器的 localStorage 按「源」隔离、**不按路径** —— 不加命名空间的话，
+  // 第二个行程页会读到第一个行程的令牌 / 数据仓库名 / 数据缓存，
+  // 结果是「在东京页编辑，数据被写进曼谷的私有仓库」，双向污染且极难排查。
+  // siteId 优先取 site-config.js 里显式写的，其次数据仓库名，最后城市名。
+  var SITE_ID = (function () {
+    var raw = CFG.siteId || CFG.dataRepo || CFG.cityName || 'default';
+    return String(raw).replace(/[^0-9A-Za-z\u4e00-\u9fa5_-]+/g, '-').replace(/^-+|-+$/g, '') || 'default';
+  })();
+  function siteKey(k) { return k + '__' + SITE_ID; }
+
+  function rawGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function rawSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+  function rawDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  function normRepo(s) { return String(s || '').trim().replace(/^\/+|\/+$/g, ''); }
+
+  // 老版本把令牌/缓存存在不带命名空间的键上。要不要迁移，判据只能是
+  // 「旧键里那个数据仓库名跟本站点配置是否一致」（令牌本身无法自证归属）：
+  // 只有一个行程的老用户 → 一致 → 无感升级；多行程 → 不匹配的那站不会去捡别人的令牌。
+  function legacyRepoOf() { return normRepo(rawGet(K_REPO)); }
+  function legacyBelongsHere() {
+    var want = normRepo(CFG.dataRepo);
+    return !!want && legacyRepoOf() === want;
+  }
+  // 谷歌 Key 不一样：它按「网站来源」限制（https://<账号>.github.io/*），
+  // 同一账号下的行程本来就共用同一把，且老用户可能只填了 Key、压根没配数据仓库
+  // —— 严格判断会让他每次打开都发现 Key 没了。所以放宽：旧键里没有仓库信息时本站点直接接管。
+  function legacyKeyBelongsHere() {
+    return !legacyRepoOf() || legacyBelongsHere();
+  }
+  function legacyOk(k) { return k === K_GKEY ? legacyKeyBelongsHere() : legacyBelongsHere(); }
+
   var ls = {
-    get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
-    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
-    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+    get: function (k) {
+      var v = rawGet(siteKey(k));
+      if (v) return v;
+      var legacy = rawGet(k);
+      if (legacy && legacyOk(k)) { rawSet(siteKey(k), legacy); return legacy; }
+      return '';
+    },
+    set: function (k, v) { rawSet(siteKey(k), v); },
+    // 删除要连旧键一起删（仅当旧键属于本站点），否则下次 get 会把刚清掉的值迁回来
+    del: function (k) { rawDel(siteKey(k)); if (legacyOk(k)) rawDel(k); }
   };
+
+  // 留给测试与线上排查：控制台里 __tripBridge.siteId 一眼看出是不是串站了
+  try {
+    window.__tripBridge = { siteId: SITE_ID, key: siteKey, legacyBelongsHere: legacyBelongsHere };
+  } catch (e) {}
 
   function token()    { return ls.get(K_TOKEN).trim(); }
   function repo()     { return (ls.get(K_REPO) || CFG.dataRepo || '').trim().replace(/^\/+|\/+$/g, ''); }
