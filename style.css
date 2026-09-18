@@ -362,9 +362,10 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 .sub-list{display:flex;flex-direction:column;gap:6px}
 .sub-list:empty{display:none}
 .sub-item{
-  display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;
+  display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;
   background:var(--t-a,#F7FAF8);padding:8px 8px 8px 11px;
 }
+.sub-item .si-row{display:flex;align-items:center;gap:8px}
 .sub-item .si-main{
   flex:1;min-width:0;display:flex;align-items:center;gap:6px;cursor:pointer;
   border:none;background:transparent;padding:0;font-family:inherit;text-align:left;
@@ -377,6 +378,14 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   font-size:14px;line-height:1;padding:4px 7px;border-radius:8px;font-family:inherit;
 }
 .sub-item .si-del:hover{background:rgba(192,90,74,.12);color:#C05A4A}
+/* 子地点备注：跟着这一条走，打完失焦就自动存，不用再点「保存」 */
+.sub-item .si-note{
+  width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;
+  background:#fff;padding:6px 9px;font-size:13px;line-height:1.4;font-family:inherit;
+  color:var(--ink);outline:none;
+}
+.sub-item .si-note::placeholder{color:var(--ink3);opacity:.85}
+.sub-item .si-note:focus{border-color:var(--forest2);background:var(--fog,#F4F8F5)}
 .sub-add{
   margin-top:8px;width:100%;border:1px dashed var(--line);background:#fff;color:var(--forest2);
   border-radius:10px;padding:10px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;
@@ -394,6 +403,11 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 .tl .body .subs .pin::before{content:'↳ ';color:var(--ink3);font-size:12px}
 .tl .body .subs .pin:hover{background:rgba(110,143,118,.13)}
 .tl .body .subs .pin:active{background:rgba(110,143,118,.22)}
+/* 子地点备注：挂在子地点名字下面，缩进对齐、字号再小一号，纯展示不可点 */
+.tl .body .subs .sub-note{
+  display:block;font-size:12px;line-height:1.45;color:var(--ink3);
+  padding:1px 0 2px 18px;overflow-wrap:anywhere;
+}
 .tl-item.done .subs .pin{color:var(--ink3);text-decoration:line-through}
 
 /* ---------- 地点搜索面板（全屏） ----------
