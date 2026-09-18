@@ -3,6 +3,7 @@
 // ⚠ 绝对不要往这里写 GitHub 令牌 —— 令牌只能填在页面的「☁️ 云端同步」里（只存本机浏览器）。
 // 谷歌 Key 必须是「按网站来源限制」的那一把（浏览器专用），泄露也没法被别人盗用。
 window.TRIP_SITE_CONFIG = {
+  siteId: 'bangkok',
   // ⚠ 这里**故意不写 siteId**：bridge 的命名空间是 `siteId || dataRepo || cityName`，
   //   本站在加显式 siteId 之前就已经用派生值 `fenixlee0078-collab-bangkok-trip-data`
   //   存过令牌与缓存了。补一行 siteId 等于换命名空间 → 每台设备都会「令牌不见了」。
