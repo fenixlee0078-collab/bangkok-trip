@@ -9,7 +9,7 @@
   <meta name="referrer" content="no-referrer-when-downgrade" />
   <title>曼谷+清迈 6天5夜</title>
   <link rel="stylesheet" href="theme.css?v=2" />
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
@@ -173,6 +173,13 @@
           <div class="coord-row">
             <span id="f-coord-state" class="coord-state">未定位</span>
           </div>
+        </div>
+        <!-- 子地点：父地点（如「暹罗天地」）下面挂的具体店铺（如「斑斓卷椰子蛋卷」）。
+             每个子地点独立定位、独立导航；父地点留空时不允许添加。 -->
+        <div class="field-row" id="f-subs-row">
+          <label>子地点 <span class="lbl-hint">同一地点里的具体店 / 点位，可选</span></label>
+          <div class="sub-list" id="f-subs"></div>
+          <button type="button" class="sub-add" id="btn-add-sub">＋ 添加子地点</button>
         </div>
         <div class="field-row"><label>备注</label><textarea id="f-note" placeholder="补充说明…"></textarea></div>
         <div class="field-row">
@@ -355,6 +362,6 @@
        顺序要紧：site-config.js（站点配置）→ static-bridge.js（先定义 io/fetch 替身）→ app.js -->
   <script src="site-config.js?v=1"></script>
   <script src="static-bridge.js?v=6"></script>
-  <script src="app.js?v=1"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
