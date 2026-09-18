@@ -357,6 +357,45 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 .place-field .pf-clear[hidden]{display:none}
 .place-field .pf-arrow{flex:none;color:var(--ink3);font-size:17px;line-height:1;margin-left:-2px}
 
+/* ---------- 子地点（父地点下面挂的具体店铺 / 点位） ---------- */
+.field-row label .lbl-hint{font-weight:400;color:var(--ink3);opacity:.85;letter-spacing:0}
+.sub-list{display:flex;flex-direction:column;gap:6px}
+.sub-list:empty{display:none}
+.sub-item{
+  display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;
+  background:var(--t-a,#F7FAF8);padding:8px 8px 8px 11px;
+}
+.sub-item .si-main{
+  flex:1;min-width:0;display:flex;align-items:center;gap:6px;cursor:pointer;
+  border:none;background:transparent;padding:0;font-family:inherit;text-align:left;
+}
+.sub-item .si-ico{flex:none;font-size:13px;line-height:1}
+.sub-item .si-name{font-size:14px;color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+.sub-item .si-hint{flex:none;font-size:11.5px;color:var(--ink3)}
+.sub-item .si-del{
+  flex:none;border:none;background:transparent;color:var(--ink3);cursor:pointer;
+  font-size:14px;line-height:1;padding:4px 7px;border-radius:8px;font-family:inherit;
+}
+.sub-item .si-del:hover{background:rgba(192,90,74,.12);color:#C05A4A}
+.sub-add{
+  margin-top:8px;width:100%;border:1px dashed var(--line);background:#fff;color:var(--forest2);
+  border-radius:10px;padding:10px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;
+}
+.sub-add:hover{border-color:var(--forest2);background:var(--fog,#F4F8F5)}
+.sub-add:disabled{color:var(--ink3);border-color:var(--line);background:#FAFAFA;cursor:not-allowed}
+.sub-empty{font-size:12.5px;color:var(--ink3);padding:1px 2px 0}
+
+/* 时间线里的子地点行：挂在父地点下面，缩进 + 小字号 */
+.tl .body .subs{list-style:none;margin:3px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}
+.tl .body .subs .pin{
+  color:var(--moss);cursor:pointer;border-radius:5px;padding:1px 4px;margin:0 -4px;
+  font-size:13px;font-weight:500;display:inline-block;max-width:100%;
+}
+.tl .body .subs .pin::before{content:'↳ ';color:var(--ink3);font-size:12px}
+.tl .body .subs .pin:hover{background:rgba(110,143,118,.13)}
+.tl .body .subs .pin:active{background:rgba(110,143,118,.22)}
+.tl-item.done .subs .pin{color:var(--ink3);text-decoration:line-through}
+
 /* ---------- 地点搜索面板（全屏） ----------
    搜索框钉在顶部：键盘从底部弹起只会压缩下方列表，搜索框永远看得见。
    这就是它比「弹窗内嵌下拉」可靠的原因 —— 不跟键盘抢同一块空间。 */
