@@ -834,7 +834,66 @@ function openDayModal(di) {
   // 主题 / 副标题 / 标签已下线，这里只维护「住宿」和「日期」
   $('#d-stay').value = day.stay || '';
   $('#d-date').value = day.date || '';
+  fillStayRange();
   $('#day-mask').classList.add('show');
+}
+
+// ===== 住宿：一次铺满一段 =====
+// 连住同一家酒店时一天一天重复填很容易漏掉某天；这里选个起止天，一次写进这段的每一天。
+// 只改 day.stay，不动数据结构 —— 老行程的数据、云端同步、导出都不受影响。
+
+// 两个下拉列出本行程所有天（带日期和星期，避免选错）
+function fillStayRange() {
+  const from = $('#d-stay-from'), to = $('#d-stay-to');
+  if (!from || !to) return;
+  const opts = state.days.map((d, i) =>
+    `<option value="${i}">D${i + 1} · ${escapeHtml(dateWithWeek(d.date))}</option>`).join('');
+  from.innerHTML = opts;
+  to.innerHTML = opts;
+  const cur = String(Math.max(0, editingDay));
+  from.value = cur;
+  to.value = cur;
+  fillStayDatalist();
+  updateStayHint();
+}
+
+// 把行程里填过的住宿名做成候选项：同一家酒店住第二段时直接选，不用重打
+function fillStayDatalist() {
+  const dl = $('#stay-list');
+  if (!dl) return;
+  const names = [...new Set(state.days.map(d => (d.stay || '').trim()).filter(Boolean))];
+  dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+}
+
+// 实时说明「这一步会写哪几天」，不让用户稀里糊涂改掉一堆数据
+function updateStayHint() {
+  const hint = $('#stay-range-hint');
+  if (!hint) return;
+  const a = parseInt($('#d-stay-from').value, 10);
+  const b = parseInt($('#d-stay-to').value, 10);
+  if (isNaN(a) || isNaN(b)) { hint.classList.remove('show'); return; }
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  const n = hi - lo + 1;
+  const name = $('#d-stay').value.trim();
+  hint.textContent = n === 1
+    ? `只会填 D${lo + 1} 这天`
+    : `会把「${name || '这个住宿'}」填到 D${lo + 1}—D${hi + 1}，共 ${n} 天`;
+  hint.classList.add('show');
+}
+
+function applyStayRange() {
+  if (editingDay < 0) return;
+  const name = $('#d-stay').value.trim();
+  if (!name) { toast('先在上面填住宿的名字'); return; }
+  const a = parseInt($('#d-stay-from').value, 10);
+  const b = parseInt($('#d-stay-to').value, 10);
+  if (isNaN(a) || isNaN(b)) return;
+  // 起止选反了也照填（用户按 D3→D1 选，本意就是这段）
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  for (let i = lo; i <= hi; i++) if (state.days[i]) state.days[i].stay = name;
+  commit();
+  closeDayModal();
+  toast(`已把「${name}」填到 D${lo + 1}—D${hi + 1}（${hi - lo + 1} 天）`);
 }
 function saveDay() {
   if (editingDay < 0) return;
@@ -1874,6 +1933,12 @@ function bindEvents() {
   ['#d-stay', '#d-date'].forEach(sel => {
     $(sel).addEventListener('keydown', (e) => { if (e.key === 'Enter') saveDay(); });
   });
+  // 住宿范围：改选择或改名字只刷新提示，点「铺满这段」才真正写数据
+  ['#d-stay-from', '#d-stay-to'].forEach(sel => {
+    $(sel).addEventListener('change', updateStayHint);
+  });
+  $('#d-stay').addEventListener('input', updateStayHint);
+  $('#btn-apply-stay').addEventListener('click', applyStayRange);
   $('#f-title').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveItem(); });
 
   // ===== 地点搜索面板交互 =====
