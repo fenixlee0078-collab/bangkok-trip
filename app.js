@@ -242,6 +242,17 @@ function renderTimeline() {
       const placeTag = place
         ? `${realTitle ? ' · ' : ''}<span class="pin" data-act="nav-place" data-day="${di}" data-idx="${ii}" title="点击导航">📍${escapeHtml(place)}</span>`
         : '';
+      // 子地点：挂在父地点下面，各自独立定位、独立导航。
+      // 过滤掉没有名字的脏数据，但保留原下标（data-sub 要指向 subs 里真正那一项）
+      const subs = (Array.isArray(item.subs) ? item.subs : [])
+        .map((s, si) => ({ s, si }))
+        .filter(x => x.s && String(x.s.name || '').trim());
+      const subsHtml = subs.length
+        ? '<ul class="subs">' + subs.map(x =>
+            `<li><span class="pin" data-act="nav-sub" data-day="${di}" data-idx="${ii}"`
+            + ` data-sub="${x.si}" title="点击导航">📍${escapeHtml(String(x.s.name).trim())}</span></li>`
+          ).join('') + '</ul>'
+        : '';
 
       // 排序模式下，第一行不能再上移、最后一行不能再下移 —— 置灰而不是隐藏，
       // 避免按钮忽有忽无导致行宽跳动
@@ -259,6 +270,7 @@ function renderTimeline() {
           ${showTime ? `<div class="time">${escapeHtml(item.time)}</div>` : ''}
           <div class="body">
             <div class="t">${titleHtml}${placeTag}</div>
+            ${subsHtml}
             ${item.note ? `<div class="n">${escapeHtml(item.note)}</div>` : ''}
           </div>
           ${sortBtns}
@@ -481,6 +493,19 @@ function resolvePlace(name) {
       if (c) return c;
     }
   }
+  // 子地点也在这个池子里：父地点「暹罗天地」下面的「斑斓卷椰子蛋卷」要能独立导航，
+  // 它的坐标只存在 subs 里，不扫这一轮就永远解析不出位置。
+  for (const day of state.days) {
+    for (const it of (day.items || [])) {
+      for (const s of (it.subs || [])) {
+        if (!s || (s.name || '').trim() !== name) continue;
+        if (typeof s.lng === 'number' && typeof s.lat === 'number'
+            && isFinite(s.lng) && isFinite(s.lat)) {
+          return { lng: s.lng, lat: s.lat, calibrated: true };
+        }
+      }
+    }
+  }
   const preset = lookupPlaceCoord(name);
   return preset ? { lng: preset[0], lat: preset[1], calibrated: false } : null;
 }
@@ -512,6 +537,16 @@ function navItemPlace(di, ii) {
   const place = (item.place || '').trim();
   if (!place) { toast('这条安排还没填地点'); return; }
   onPoiClick(place, !!item.food);
+}
+// 点子地点：按子地点自己的名字和坐标导航。
+// 不继承父地点的 food 标记 —— 「吃饭的饭店」说的是这一条安排的落脚点，
+// 父地点是商场、子地点是里面一家甜品店时，双选弹给父地点才有意义。
+function navSubPlace(di, ii, si) {
+  const item = state.days[di] && state.days[di].items[ii];
+  const s = (item && Array.isArray(item.subs)) ? item.subs[si] : null;
+  const name = s ? String(s.name || '').trim() : '';
+  if (!name) { toast('这个子地点还没填名字'); return; }
+  onPoiClick(name, false);
 }
 // 打开高德地图的「路线规划」页（国内）：
 //   起点 = 我的位置（留空高德自动定位）；默认交通方式 = 公共交通（t=1）
@@ -878,6 +913,8 @@ function openItemModal(di, ii) {
     : null;
   renderPlaceField();
   refreshCoordState();
+  renderSubsField();
+  placePickTarget = { mode: 'main', subIndex: -1 };   // 新开一次弹窗，选取意图复位
   $('#item-mask').classList.add('show');
 }
 
@@ -895,6 +932,8 @@ let placeSearchEnabled = null;       // 服务端是否配了高德 Key
 let placeResults = [];               // 当前候选列表
 let selectedIdx = -1;                // 面板里高亮/待确认的候选下标
 let pickedPlace = null;              // 用户已选定的地点 { name, lng, lat }
+// 这次搜索面板是给谁选的：main=父地点（原有行为）/ sub-add=新增子地点 / sub-edit=替换某个子地点
+let placePickTarget = { mode: 'main', subIndex: -1 };
 let panelOpen = false;
 
 async function checkPlaceSearchEnabled() {
@@ -927,17 +966,99 @@ function renderPlaceField() {
   if (clearBtn) clearBtn.hidden = !name;
 }
 
+// ===== 子地点（父地点下面的具体店铺 / 点位）=====
+//
+// 数据结构：item.subs = [{ name, lng?, lat? }]
+//   · 不塞进 note：note 是纯文本，子地点要能各自定位、各自跳导航
+//   · 不拆成独立的一"条"安排：它们在行程上是同一个停留点（逛商场顺路吃一家店），
+//     拆成两行会把时间线和当天路线的读法弄乱
+// 子地点跟父地点一样「选中即入库」，点保存才算最终确认。
+
+// 当前正在编辑这条的子地点数组（只读，不产生副作用）
+function currentSubs() {
+  const { day, idx } = editingItem;
+  if (day < 0 || idx < 0) return [];
+  const item = state.days[day] && state.days[day].items[idx];
+  if (!item || !Array.isArray(item.subs)) return [];
+  return item.subs;
+}
+
+// 父地点的当前名字（弹窗里这次的选用优先，其次看已存进 item 的）
+function parentPlaceName() {
+  if (pickedPlace && pickedPlace.name) return pickedPlace.name;
+  const { day, idx } = editingItem;
+  if (day < 0 || idx < 0) return '';
+  const item = state.days[day] && state.days[day].items[idx];
+  return item ? String(item.place || '').trim() : '';
+}
+
+// 把子地点渲染到编辑弹窗（唯一出口，增删改后都走这里）
+function renderSubsField() {
+  const box = $('#f-subs');
+  const addBtn = $('#btn-add-sub');
+  if (!box) return;
+  const subs = currentSubs();
+  box.innerHTML = subs.length
+    ? subs.map((s, si) => `
+      <div class="sub-item">
+        <button type="button" class="si-main" data-sub-edit="${si}" title="点一下换个地点">
+          <span class="si-ico">📍</span>
+          <span class="si-name">${escapeHtml(String(s.name || ''))}</span>
+          <span class="si-hint">${(typeof s.lng === 'number' && typeof s.lat === 'number') ? '已定位' : '未定位'}</span>
+        </button>
+        <button type="button" class="si-del" data-sub-del="${si}" title="删除" aria-label="删除">✕</button>
+      </div>`).join('')
+    : '<div class="sub-empty">还没有子地点。</div>';
+  // 父地点空着时不让加：子地点是"在某个地点里"的具体店，没有父地点就没有参照，
+  // 列表里也会变成一条孤立的地址
+  if (addBtn) addBtn.disabled = !parentPlaceName();
+}
+
+function startAddSub() {
+  if (!parentPlaceName()) { toast('先填父地点，再添加子地点'); return; }
+  placePickTarget = { mode: 'sub-add', subIndex: -1 };
+  openPlacePanel();
+}
+
+function startEditSub(si) {
+  const subs = currentSubs();
+  if (!subs[si]) return;
+  placePickTarget = { mode: 'sub-edit', subIndex: si };
+  openPlacePanel();
+}
+
+function deleteSub(si) {
+  const { day, idx } = editingItem;
+  if (day < 0 || idx < 0) return;
+  const item = state.days[day] && state.days[day].items[idx];
+  if (!item || !Array.isArray(item.subs) || !item.subs[si]) return;
+  const gone = item.subs[si].name;
+  item.subs.splice(si, 1);
+  if (!item.subs.length) delete item.subs;      // 空数组不留，保持 data.json 干净
+  commit();
+  renderSubsField();
+  toast('已删除子地点「' + gone + '」');
+}
+
 function openPlacePanel() {
   const panel = $('#place-panel');
   if (!panel) return;
   panelOpen = true;
   panel.hidden = false;
   panel.classList.add('show');
-  // 带出当前地点，方便在原词基础上改
-  const cur = (pickedPlace && pickedPlace.name)
-    || (state.days[editingItem.day] && state.days[editingItem.day].items[editingItem.idx]
-        ? state.days[editingItem.day].items[editingItem.idx].place : '') || '';
+  // 带出当前地点，方便在原词基础上改。
+  // 子地点不沿用父地点的词：「暹罗天地」下加一家店，预填父地点名只会立刻搜出一堆同名结果
+  let cur = '';
+  if (placePickTarget.mode === 'sub-edit') {
+    const s = currentSubs()[placePickTarget.subIndex];
+    cur = (s && s.name) || '';
+  } else if (placePickTarget.mode !== 'sub-add') {
+    cur = (pickedPlace && pickedPlace.name)
+      || (state.days[editingItem.day] && state.days[editingItem.day].items[editingItem.idx]
+          ? state.days[editingItem.day].items[editingItem.idx].place : '') || '';
+  }
   const inp = $('#pp-input');
+  inp.placeholder = placePickTarget.mode === 'main' ? '搜索地点或地址' : '搜索子地点（具体店铺 / 点位）';
   inp.value = cur;
   $('#pp-clear').hidden = !cur;
   resetPanelSelection();
@@ -956,6 +1077,9 @@ function closePlacePanel() {
   panel.hidden = true;
   clearTimeout(placeSearchTimer);
   resetPanelSelection();
+  // 关掉面板就等于放弃这次的选取意图，回到默认的「选父地点」，
+  // 否则下次点地点行会莫名其妙地又去改子地点
+  placePickTarget = { mode: 'main', subIndex: -1 };
   try { $('#pp-input').blur(); } catch (e) {}
 }
 
@@ -988,12 +1112,30 @@ function selectPlace(idx) {
 function confirmPlace() {
   const p = placeResults[selectedIdx];
   if (!p) return;
-  if (p.manual || typeof p.lng !== 'number') {
-    // 兜底项：没坐标，交给预置表 / 近似定位
-    pickedPlace = null;
-  } else {
-    pickedPlace = { name: p.name, lng: p.lng, lat: p.lat };
+  // 兜底项没坐标（按名称记的），交给预置表 / 近似定位
+  const coord = (p.manual || typeof p.lng !== 'number') ? null : { lng: p.lng, lat: p.lat };
+
+  // —— 给子地点选的：写进 subs，父地点原样不动 ——
+  if (placePickTarget.mode === 'sub-add' || placePickTarget.mode === 'sub-edit') {
+    const { day, idx } = editingItem;
+    if (day < 0 || idx < 0) { closePlacePanel(); return; }
+    const item = state.days[day] && state.days[day].items[idx];
+    if (!item) { closePlacePanel(); return; }
+    if (!Array.isArray(item.subs)) item.subs = [];
+    const rec = { name: p.name };
+    if (coord) { rec.lng = coord.lng; rec.lat = coord.lat; }
+    const replacing = placePickTarget.mode === 'sub-edit' && !!item.subs[placePickTarget.subIndex];
+    if (replacing) item.subs[placePickTarget.subIndex] = rec;
+    else item.subs.push(rec);
+    commit();
+    renderSubsField();
+    closePlacePanel();            // 这一步会顺手把选取意图复位
+    toast((replacing ? '已改为「' : '已添加子地点「') + p.name + '」');
+    return;
   }
+
+  // —— 给父地点选的（原有行为）——
+  pickedPlace = coord ? { name: p.name, lng: coord.lng, lat: coord.lat } : null;
   renderPlaceField();
   refreshCoordState();
   // 立刻写回行程项，实现「选中即上图」
@@ -1006,6 +1148,7 @@ function confirmPlace() {
     commit();
   }
   closePlacePanel();
+  renderSubsField();              // 父地点有了，子地点按钮要跟着放开
   toast(pickedPlace ? '已定位到「' + p.name + '」' : '已添加「' + p.name + '」');
 }
 
@@ -1020,6 +1163,9 @@ function clearPlace() {
     delete item.lng; delete item.lat;
     commit();
   }
+  // 子地点**不跟着删**：它们各自有名字和坐标，能独立导航（用户可能只是暂时清掉父地点）。
+  // 但要刷新一下按钮状态：父地点空了就不该再让加新的子地点。
+  renderSubsField();
 }
 
 // ===== 面板内的搜索与列表 =====
@@ -1227,6 +1373,11 @@ function saveItem() {
   item.note = $('#f-note').value.trim();
   // 勾了「吃饭的饭店」就是餐饮；选了餐饮类型也自动勾上，两个入口保持一致
   item.food = (editingType === 'food') || $('#f-food').checked;
+  // 子地点：丢掉没名字的脏数据；一个都不剩就把字段删掉，data.json 里不留空数组
+  if (Array.isArray(item.subs)) {
+    item.subs = item.subs.filter(s => s && String(s.name || '').trim());
+    if (!item.subs.length) delete item.subs;
+  }
   // 坐标处理：坐标必须和地名对得上，否则导航会跳错地方
   if (pickedPlace && pickedPlace.name === name) {
     item.lng = pickedPlace.lng;
@@ -1599,6 +1750,11 @@ function bindEvents() {
     // 排序模式下不跳导航，整行让位给上移/下移按钮。
     else if (act === 'edit-item') { if (sortingDay < 0) navItemPlace(di, ii); }
     else if (act === 'nav-place') { e.stopPropagation(); if (sortingDay < 0) navItemPlace(di, ii); }
+    // 子地点：必须 stopPropagation，否则会冒泡到 .item-row 变成「导航去父地点」
+    else if (act === 'nav-sub') {
+      e.stopPropagation();
+      if (sortingDay < 0) navSubPlace(di, ii, parseInt(el.dataset.sub, 10));
+    }
     else if (act === 'del-item') removeItem(di, ii);
   });
 
@@ -1672,6 +1828,18 @@ function bindEvents() {
     e.stopPropagation();
     clearPlace();
   });
+
+  // ===== 子地点 =====
+  // 「＋ 添加子地点」→ 复用同一个全屏搜索面板，只是这次结果落到 subs 里
+  $('#btn-add-sub').addEventListener('click', startAddSub);
+  // 列表里：点名称=换个地点（面板带出原名），点 ✕=删除
+  $('#f-subs').addEventListener('click', (e) => {
+    const del = e.target.closest('[data-sub-del]');
+    if (del) { deleteSub(parseInt(del.dataset.subDel, 10)); return; }
+    const edit = e.target.closest('[data-sub-edit]');
+    if (edit) { startEditSub(parseInt(edit.dataset.subEdit, 10)); }
+  });
+
   $('#pp-back').addEventListener('click', closePlacePanel);
   $('#pp-clear').addEventListener('click', () => {
     const inp = $('#pp-input');
