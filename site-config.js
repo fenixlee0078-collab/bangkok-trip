@@ -3,6 +3,7 @@
 // ⚠ 绝对不要往这里写 GitHub 令牌 —— 令牌只能填在页面的「☁️ 云端同步」里（只存本机浏览器）。
 // 谷歌 Key 必须是「按网站来源限制」的那一把（浏览器专用），泄露也没法被别人盗用。
 window.TRIP_SITE_CONFIG = {
+  siteId: 'bangkok',
   // 行程级配置（对应服务端版的 /api/trip-config）
   mapProvider: 'google',                 // 'google'（海外）| 'amap'（国内）
   cityName: '曼谷+清迈',
