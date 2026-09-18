@@ -248,10 +248,16 @@ function renderTimeline() {
         .map((s, si) => ({ s, si }))
         .filter(x => x.s && String(x.s.name || '').trim());
       const subsHtml = subs.length
-        ? '<ul class="subs">' + subs.map(x =>
-            `<li><span class="pin" data-act="nav-sub" data-day="${di}" data-idx="${ii}"`
-            + ` data-sub="${x.si}" title="点击导航">📍${escapeHtml(String(x.s.name).trim())}</span></li>`
-          ).join('') + '</ul>'
+        ? '<ul class="subs">' + subs.map(x => {
+            const subNote = String(x.s.note || '').trim();
+            const subPin = `<span class="pin" data-act="nav-sub" data-day="${di}" data-idx="${ii}"`
+              + ` data-sub="${x.si}" title="点击导航">📍${escapeHtml(String(x.s.name).trim())}</span>`;
+            // 备注跟着子地点走：换行显示、纯展示不导航，但要点一下 stopPropagation，
+            // 否则会冒泡到 .item-row 变成「导航去父地点」
+            return `<li>${subPin}`
+              + (subNote ? `<span class="sub-note" data-act="sub-note">${escapeHtml(subNote)}</span>` : '')
+              + '</li>';
+          }).join('') + '</ul>'
         : '';
 
       // 排序模式下，第一行不能再上移、最后一行不能再下移 —— 置灰而不是隐藏，
@@ -968,8 +974,8 @@ function renderPlaceField() {
 
 // ===== 子地点（父地点下面的具体店铺 / 点位）=====
 //
-// 数据结构：item.subs = [{ name, lng?, lat? }]
-//   · 不塞进 note：note 是纯文本，子地点要能各自定位、各自跳导航
+// 数据结构：item.subs = [{ name, lng?, lat?, note? }]
+//   · 不塞进父项的 note：note 是父地点的备注，子地点要能各自定位、各自跳导航、各自写备注
 //   · 不拆成独立的一"条"安排：它们在行程上是同一个停留点（逛商场顺路吃一家店），
 //     拆成两行会把时间线和当天路线的读法弄乱
 // 子地点跟父地点一样「选中即入库」，点保存才算最终确认。
@@ -992,6 +998,27 @@ function parentPlaceName() {
   return item ? String(item.place || '').trim() : '';
 }
 
+// 子地点的备注是「边打边存」还是「失焦再存」？答案是后者：
+//   · 边打边 commit() 会把整条时间线重绘一次，手机上打字会一卡一卡，还会把输入焦点顶掉
+//   · 所以输入时只改内存里的 subs[si].note，失焦 / 回车 / 关弹窗时统一 flush 一次落盘
+let subNoteDirty = false;
+
+function setSubNote(si, val) {
+  const subs = currentSubs();
+  const s = subs[si];
+  if (!s) return;
+  const v = String(val || '').trim();
+  if (v) s.note = v; else delete s.note;   // 清空即删字段，data.json 不留空串
+  subNoteDirty = true;
+}
+
+// 把攒着的备注改动落一次盘（写盘 + 广播 + 重绘时间线）
+function flushSubNotes() {
+  if (!subNoteDirty) return;
+  subNoteDirty = false;
+  commit();
+}
+
 // 把子地点渲染到编辑弹窗（唯一出口，增删改后都走这里）
 function renderSubsField() {
   const box = $('#f-subs');
@@ -1001,12 +1028,17 @@ function renderSubsField() {
   box.innerHTML = subs.length
     ? subs.map((s, si) => `
       <div class="sub-item">
-        <button type="button" class="si-main" data-sub-edit="${si}" title="点一下换个地点">
-          <span class="si-ico">📍</span>
-          <span class="si-name">${escapeHtml(String(s.name || ''))}</span>
-          <span class="si-hint">${(typeof s.lng === 'number' && typeof s.lat === 'number') ? '已定位' : '未定位'}</span>
-        </button>
-        <button type="button" class="si-del" data-sub-del="${si}" title="删除" aria-label="删除">✕</button>
+        <div class="si-row">
+          <button type="button" class="si-main" data-sub-edit="${si}" title="点一下换个地点">
+            <span class="si-ico">📍</span>
+            <span class="si-name">${escapeHtml(String(s.name || ''))}</span>
+            <span class="si-hint">${(typeof s.lng === 'number' && typeof s.lat === 'number') ? '已定位' : '未定位'}</span>
+          </button>
+          <button type="button" class="si-del" data-sub-del="${si}" title="删除" aria-label="删除">✕</button>
+        </div>
+        <input type="text" class="si-note" data-sub-note="${si}" maxlength="120"
+               placeholder="子地点备注（如：必点斑斓卷）"
+               value="${escapeHtml(String(s.note || ''))}" />
       </div>`).join('')
     : '<div class="sub-empty">还没有子地点。</div>';
   // 父地点空着时不让加：子地点是"在某个地点里"的具体店，没有父地点就没有参照，
@@ -1036,6 +1068,7 @@ function deleteSub(si) {
   item.subs.splice(si, 1);
   if (!item.subs.length) delete item.subs;      // 空数组不留，保持 data.json 干净
   commit();
+  subNoteDirty = false;                         // 删掉的那条（连带备注）已经写盘了
   renderSubsField();
   toast('已删除子地点「' + gone + '」');
 }
@@ -1125,9 +1158,14 @@ function confirmPlace() {
     const rec = { name: p.name };
     if (coord) { rec.lng = coord.lng; rec.lat = coord.lat; }
     const replacing = placePickTarget.mode === 'sub-edit' && !!item.subs[placePickTarget.subIndex];
-    if (replacing) item.subs[placePickTarget.subIndex] = rec;
-    else item.subs.push(rec);
+    if (replacing) {
+      // 换地点不等于丢备注：备注讲的是「在这个点要干嘛」，改个店名通常还得留着
+      const oldNote = String((item.subs[placePickTarget.subIndex] || {}).note || '').trim();
+      if (oldNote) rec.note = oldNote;
+      item.subs[placePickTarget.subIndex] = rec;
+    } else item.subs.push(rec);
     commit();
+    subNoteDirty = false;         // 上面这次 commit 已把备注一并写盘
     renderSubsField();
     closePlacePanel();            // 这一步会顺手把选取意图复位
     toast((replacing ? '已改为「' : '已添加子地点「') + p.name + '」');
@@ -1373,11 +1411,21 @@ function saveItem() {
   item.note = $('#f-note').value.trim();
   // 勾了「吃饭的饭店」就是餐饮；选了餐饮类型也自动勾上，两个入口保持一致
   item.food = (editingType === 'food') || $('#f-food').checked;
-  // 子地点：丢掉没名字的脏数据；一个都不剩就把字段删掉，data.json 里不留空数组
+  // 子地点：丢掉没名字的脏数据；一个都不剩就把字段删掉，data.json 里不留空数组。
+  // 顺手把每条重新拼一遍，好处是 note 的空串、光有 lng 没 lat 这类半截坐标都会被顺平。
   if (Array.isArray(item.subs)) {
-    item.subs = item.subs.filter(s => s && String(s.name || '').trim());
+    item.subs = item.subs
+      .filter(s => s && String(s.name || '').trim())
+      .map(s => {
+        const rec = { name: String(s.name).trim() };
+        if (typeof s.lng === 'number' && typeof s.lat === 'number') { rec.lng = s.lng; rec.lat = s.lat; }
+        const nt = String(s.note || '').trim();
+        if (nt) rec.note = nt;
+        return rec;
+      });
     if (!item.subs.length) delete item.subs;
   }
+  subNoteDirty = false;   // 弹窗里攒的子地点备注已经被这里一起收下了
   // 坐标处理：坐标必须和地名对得上，否则导航会跳错地方
   if (pickedPlace && pickedPlace.name === name) {
     item.lng = pickedPlace.lng;
@@ -1449,13 +1497,19 @@ function closeItemModal() {
   // 新增后没点「保存」就关掉 → 把那条空安排丢掉。
   // 它从没 commit 过（没广播也没写盘），所以这里只需本地移除 + 重绘。
   const { day, idx } = editingItem;
+  let dropped = false;
   if (day >= 0 && idx >= 0) {
     const it = state.days[day] && state.days[day].items[idx];
     if (it && it._new) {
       state.days[day].items.splice(idx, 1);
       render();
+      dropped = true;
     }
   }
+  // 子地点备注只改了内存（见 setSubNote），这里是最后一次落盘机会：
+  // 打完备注直接点遮罩关窗、没点「保存」也不会丢。整条被撤掉时则连备注一起作废。
+  if (dropped) subNoteDirty = false;
+  else flushSubNotes();
   $('#item-mask').classList.remove('show');
   editingItem = { day: -1, idx: -1 };
 }
@@ -1755,6 +1809,8 @@ function bindEvents() {
       e.stopPropagation();
       if (sortingDay < 0) navSubPlace(di, ii, parseInt(el.dataset.sub, 10));
     }
+    // 子地点备注只是给人看的，点它不该跳到导航
+    else if (act === 'sub-note') { e.stopPropagation(); }
     else if (act === 'del-item') removeItem(di, ii);
   });
 
@@ -1838,6 +1894,21 @@ function bindEvents() {
     if (del) { deleteSub(parseInt(del.dataset.subDel, 10)); return; }
     const edit = e.target.closest('[data-sub-edit]');
     if (edit) { startEditSub(parseInt(edit.dataset.subEdit, 10)); }
+  });
+  // 备注是「边打边存到内存、失焦再落盘」：
+  //   · 每敲一个字都 commit() 会把整条时间线重绘一遍 —— 手机上肉眼可见地卡，
+  //     输入框还会因为列表重渲染而被顶掉焦点（打字打着打着光标跑了）
+  //   · 所以输入只改 subs[si].note；失焦 / 回车 / 关弹窗时由 flushSubNotes() 统一写盘
+  $('#f-subs').addEventListener('input', (e) => {
+    const inp = e.target.closest('[data-sub-note]');
+    if (inp) setSubNote(parseInt(inp.dataset.subNote, 10), inp.value);
+  });
+  $('#f-subs').addEventListener('change', (e) => {
+    if (e.target.closest('[data-sub-note]')) flushSubNotes();
+  });
+  $('#f-subs').addEventListener('keydown', (e) => {
+    // 回车 = 打完了（手机键盘上那颗也是回车），收键盘并落盘
+    if (e.key === 'Enter' && e.target.closest('[data-sub-note]')) { e.preventDefault(); e.target.blur(); }
   });
 
   $('#pp-back').addEventListener('click', closePlacePanel);
