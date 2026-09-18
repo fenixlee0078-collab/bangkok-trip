@@ -13,6 +13,9 @@ window.TRIP_SITE_CONFIG = {
   mapProvider: 'google',                 // 'google'（海外）| 'amap'（国内）
   cityName: '曼谷+清迈',
   cityAliases: ['曼谷', '清迈', 'bangkok', 'chiang mai', 'chiangmai', 'krung thep', 'thailand', '泰国'],
+  // 记账币种：首页「记一笔」的币种下拉默认选它，金额按实时汇率折成人民币入账。
+  // 人民币行程留空 —— 前端据此根本不显示币种那一行。
+  currency: 'THB',
   searchCenter: { lng: 100.5018, lat: 13.7563 },
 
   // 浏览器直连谷歌 Places API (New) 用的 Key
