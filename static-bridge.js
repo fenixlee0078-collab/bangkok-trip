@@ -29,7 +29,7 @@
   // 同一个 GitHub 账号下的所有 Pages 站点是**同源**的（都是 <用户名>.github.io/<仓库>/），
   // 而浏览器的 localStorage 按「源」隔离、**不按路径** —— 不加命名空间的话，
   // 第二个行程页会读到第一个行程的令牌 / 数据仓库名 / 数据缓存，
-  // 结果是「在东京页编辑，数据被写进曼谷的私有仓库」，双向污染且极难排查。
+  // 结果是「在东京页编辑，数据被写进大阪页的私有仓库」，双向污染且极难排查。
   // siteId 优先取 site-config.js 里显式写的，其次数据仓库名，最后城市名。
   var SITE_ID = (function () {
     var raw = CFG.siteId || CFG.dataRepo || CFG.cityName || 'default';
@@ -608,7 +608,12 @@ var ROUTE_MODES = {
     // 把「这把 Key 没开通 Routes API」单独认出来（google-off），前端才能提示去开通
     var msg = String((j && j.error && (j.error.message || j.error.status)) || ('谷歌返回 HTTP ' + r.status));
     var blocked = GOOGLE_OFF_RE.test(msg);
-    return { ok: false, reason: blocked ? 'google-off' : 'google', error: msg.slice(0, 140) };
+    if (blocked) return { ok: false, reason: 'google-off', error: msg.slice(0, 140) };
+    // 谷歌回 200 但 `routes` 为空（响应就是一个 `{}`）＝ 这个地区没有该方式的路线数据。
+    // 实测：曼谷点「骑行」不管远近都回 `{}`（谷歌在泰国没有骑行路线覆盖）；
+    // 旧代码会兜到 `'谷歌返回 HTTP ' + status` ＝「没查到：谷歌返回 HTTP 200」，用户看不懂。
+    if (j && !j.error) return { ok: false, reason: 'noroute', mode: mode };
+    return { ok: false, reason: 'google', error: msg.slice(0, 140) };
   }
 
   function routeResult(mode, from, to) {
@@ -648,7 +653,7 @@ var ROUTE_MODES = {
     var c = CFG.searchCenter || {};
     if (c.lat && c.lng) {
       // locationBias 只是「偏向」，不会把范围外的结果全砍掉
-      // （曼谷+清迈跨城 650km，所以半径给到上限 50km 之外仍靠文本相关度兜底）
+      // （跨城行程可能相隔几百公里，所以半径给到上限 50km 之外仍靠文本相关度兜底）
       body.locationBias = { circle: { center: { latitude: c.lat, longitude: c.lng }, radius: 50000 } };
     }
 
